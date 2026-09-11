@@ -1,325 +1,276 @@
-import React, { useState } from 'react';
-import { usePage, router } from '@inertiajs/react';
-import { MessageSquare, Plus, Edit2, Trash2, Users, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarHeader,
-    SidebarGroup,
-    SidebarGroupLabel,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    useSidebar,
-} from '@/components/ui/sidebar';
-import { NavUser } from '@/components/nav-user';
+import { useState } from 'react';
+import { router, usePage } from '@inertiajs/react';
+import { SquarePen } from 'lucide-react';
 import { toast } from 'sonner';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar';
+import type { WiraConversation } from '@/types/wira';
+import type { Auth } from '@/types/auth';
 
-// WIRA Nusantara Logo Component
-function WiraLogo({ size = 10 }: { size?: number }) {
-    return (
-        <div className={`flex h-${size} w-${size} shrink-0 items-center justify-center rounded-xl overflow-hidden bg-white shadow-md border border-white/20`}>
-            <img
-                src="/images/WhatsApp_Image_2026-09-08_at_07.25.54-removebg-preview.png"
-                alt="WIRA Nusantara"
-                className="h-full w-full object-contain p-0.5"
-            />
-        </div>
-    );
+function formatDate(value?: string): string {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short' }).format(date);
 }
 
-interface Conversation {
+function csrf(): string {
+    return (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? '';
+}
+
+interface MenuState {
     id: number;
-    title: string;
-    updated_at: string;
-    last_message?: string;
+    x: number; // sisi kanan tombol
+    y: number; // sisi bawah tombol
+    flip: boolean; // buka ke atas bila dekat tepi bawah
 }
 
 export function AppSidebar() {
-    const { conversations = [], activeConversation } = usePage().props as unknown as {
-        conversations?: Conversation[];
-        activeConversation?: Conversation;
+    const page = usePage().props as unknown as {
+        conversations?: WiraConversation[];
+        activeConversation?: WiraConversation | null;
+        auth: Auth;
     };
+    const conversations = page.conversations ?? [];
+    const activeId = page.activeConversation?.id ?? null;
+    const user = page.auth?.user;
 
-    const { state } = useSidebar();
-    const isCollapsed = state === 'collapsed';
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [menu, setMenu] = useState<MenuState | null>(null);
 
-    const [editingConvId, setEditingConvId] = useState<number | null>(null);
-    const [editingTitle, setEditingTitle] = useState('');
+    const pinned = conversations.filter((c) => c.pinned_at);
+    const others = conversations.filter((c) => !c.pinned_at);
+    const menuConv = menu ? conversations.find((c) => c.id === menu.id) : null;
 
-    // Custom confirm delete modal state
-    const [deleteTargetConv, setDeleteTargetConv] = useState<{ id: number; title: string } | null>(null);
-    const [isDeletingConv, setIsDeletingConv] = useState(false);
-
-    const handleNewConversation = async () => {
+    const startNew = async () => {
         try {
             const res = await fetch('/wira/chat/conversations', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
             });
-            const data = await res.json();
-            if (data.conversation) {
-                router.get('/dashboard', { conversation_id: data.conversation.id });
-            }
-        } catch (e) {
+            const data = (await res.json()) as { conversation: WiraConversation };
+            router.get('/dashboard', { conversation_id: data.conversation.id });
+        } catch {
             toast.error('Gagal membuat percakapan baru');
         }
     };
 
-    const handleSelectConversation = (id: number) => {
+    const select = (id: number) => {
+        if (editingId === id) return;
         router.get('/dashboard', { conversation_id: id }, { preserveState: true, replace: true });
     };
 
-    const handleDeleteClick = (e: React.MouseEvent, conv: Conversation) => {
+    const saveTitle = (id: number) => {
+        const title = editTitle.trim();
+        setEditingId(null);
+        if (!title) return;
+        router.patch(`/wira/chat/conversations/${id}/title`, { title }, { preserveScroll: true });
+    };
+
+    const togglePin = (id: number) => router.patch(`/wira/chat/conversations/${id}/pin`, {}, { preserveScroll: true });
+    const archive = (id: number) => router.patch(`/wira/chat/conversations/${id}/archive`, {}, { preserveScroll: true });
+    const remove = (id: number) => router.delete(`/wira/chat/conversations/${id}`, { preserveScroll: true });
+
+    const share = async (id: number) => {
+        const url = `${window.location.origin}/dashboard?conversation_id=${id}`;
+        try {
+            await navigator.clipboard.writeText(url);
+            toast.success('Tautan percakapan disalin');
+        } catch {
+            toast.error('Gagal menyalin tautan');
+        }
+    };
+
+    const openMenu = (e: React.MouseEvent<HTMLButtonElement>, id: number) => {
         e.stopPropagation();
-        setDeleteTargetConv({ id: conv.id, title: conv.title });
+        if (menu?.id === id) {
+            setMenu(null);
+            return;
+        }
+        const r = e.currentTarget.getBoundingClientRect();
+        setMenu({ id, x: r.right, y: r.bottom, flip: r.bottom > window.innerHeight - 220 });
     };
 
-    const executeDeleteConv = () => {
-        if (!deleteTargetConv) return;
-        setIsDeletingConv(true);
-
-        router.delete(`/wira/chat/conversations/${deleteTargetConv.id}`, {
-            onSuccess: () => {
-                toast.success('Percakapan berhasil dihapus', {
-                    description: `"${deleteTargetConv.title}" telah dihapus dari riwayat.`,
-                    icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
-                });
-                setDeleteTargetConv(null);
-            },
-            onError: () => {
-                toast.error('Gagal menghapus percakapan', {
-                    description: 'Terjadi kesalahan saat menghapus percakapan. Coba lagi.',
-                });
-            },
-            onFinish: () => setIsDeletingConv(false),
-        });
+    const runAction = (fn: () => void) => {
+        setMenu(null);
+        fn();
     };
 
-    const handleSaveTitle = (id: number) => {
-        if (!editingTitle.trim()) return;
-        router.patch(`/wira/chat/conversations/${id}/title`, {
-            title: editingTitle.trim(),
-        }, {
-            onSuccess: () => {
-                setEditingConvId(null);
-                toast.success('Judul percakapan diperbarui', {
-                    icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
-                });
-            },
-            onError: () => {
-                toast.error('Gagal memperbarui judul percakapan');
-            },
-        });
+    const renderItem = (conv: WiraConversation) => {
+        const isActive = conv.id === activeId;
+        const isEditing = editingId === conv.id;
+        const isOpen = menu?.id === conv.id;
+
+        return (
+            <li key={conv.id}>
+                <div
+                    onClick={() => select(conv.id)}
+                    className={`flex cursor-pointer items-center gap-1 rounded-shell px-2.5 py-2 transition-colors ${
+                        isActive ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]'
+                    }`}
+                >
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                            {isEditing ? (
+                                <input
+                                    autoFocus
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveTitle(conv.id);
+                                        if (e.key === 'Escape') setEditingId(null);
+                                    }}
+                                    onBlur={() => saveTitle(conv.id)}
+                                    className="w-full rounded-[4px] border border-white/20 bg-black/30 px-1.5 py-0.5 text-[14px] text-mist focus:outline-none"
+                                />
+                            ) : (
+                                <span className={`truncate text-[14px] ${isActive ? 'text-mist' : 'text-mist/75'}`}>
+                                    {conv.title}
+                                </span>
+                            )}
+                            <span className="shrink-0 font-mono text-[13px] text-mist/40">{formatDate(conv.updated_at)}</span>
+                        </div>
+                    </div>
+
+                    {!isEditing && (
+                        <button
+                            type="button"
+                            onClick={(e) => openMenu(e, conv.id)}
+                            aria-label="Aksi percakapan"
+                            className={`shrink-0 rounded-[4px] px-1 text-[15px] leading-none transition-colors hover:text-mist ${
+                                isOpen ? 'text-mist' : 'text-mist/50'
+                            }`}
+                        >
+                            ⋯
+                        </button>
+                    )}
+                </div>
+            </li>
+        );
     };
+
+    const menuItemClass =
+        'block w-full rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-mist/80 transition-colors hover:bg-white/[0.08] hover:text-mist';
 
     return (
-        <Sidebar collapsible="icon">
-            {/* HEADER */}
-            <SidebarHeader className="gap-0 p-0">
-                <div className={`flex items-center gap-3 px-3 py-3 border-b border-sidebar-border ${isCollapsed ? 'justify-center px-2' : ''}`}>
-                    <WiraLogo />
-                    {!isCollapsed && (
-                        <div className="flex flex-col leading-tight min-w-0">
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-sm font-extrabold text-sidebar-foreground tracking-tight">WIRA</span>
-                                <span className="rounded-md bg-[#FFD200] px-1.5 py-0.5 text-[8px] font-black text-[#1a3c55] leading-none uppercase tracking-wide">AI</span>
-                            </div>
-                            <span className="text-[10px] text-sidebar-foreground/50 font-medium truncate">PLN NP UP Kendari</span>
-                        </div>
-                    )}
+        <Sidebar className="border-r-0">
+            <SidebarHeader className="gap-3 px-4 py-4">
+                <img
+                    src="/logo/logo.png"
+                    alt="PLN Nusantara Power — Unit Pembangkitan Kendari"
+                    className="mx-auto h-10 w-auto max-w-[200px] object-contain"
+                />
+                <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[13px] font-medium tracking-tight text-mist">WIRA</span>
+                    <span className="font-mono text-[11px] text-mist/40">Asisten</span>
                 </div>
-
-                {!isCollapsed ? (
-                    <div className="px-3 py-2.5">
-                        <button
-                            onClick={handleNewConversation}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFD200] px-4 py-2.5 text-xs font-bold text-[#1a3c55] shadow-md transition-all hover:bg-[#FFE043] hover:shadow-lg active:scale-[0.98]"
-                        >
-                            <Plus className="h-3.5 w-3.5 stroke-[3]" />
-                            <span>Percakapan Baru</span>
-                        </button>
-                    </div>
-                ) : (
-                    <div className="flex justify-center py-2">
-                        <button
-                            onClick={handleNewConversation}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FFD200] text-[#2F6C8E] hover:bg-[#FFE043] shadow"
-                            title="Percakapan Baru"
-                        >
-                            <Plus className="h-4 w-4 stroke-[3]" />
-                        </button>
-                    </div>
-                )}
+                <button
+                    type="button"
+                    onClick={startNew}
+                    className="flex w-full items-center gap-2 rounded-shell px-2.5 py-2 text-left text-[14px] text-mist/80 transition-colors hover:bg-white/[0.06] hover:text-mist"
+                >
+                    <SquarePen className="h-4 w-4 shrink-0" />
+                    Percakapan baru
+                </button>
             </SidebarHeader>
 
-            {/* CONTENT */}
-            <SidebarContent className="custom-scrollbar px-2 py-1">
-                <SidebarGroup className="p-0">
-                    {!isCollapsed && (
-                        <SidebarGroupLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/50">
-                            Riwayat Percakapan WIRA
-                        </SidebarGroupLabel>
-                    )}
-                    <SidebarMenu>
-                        {conversations.length === 0 ? (
-                            !isCollapsed && (
-                                <div className="px-3 py-6 text-center">
-                                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-sidebar-accent/50">
-                                        <MessageSquare className="h-4 w-4 text-sidebar-foreground/30" />
-                                    </div>
-                                    <p className="text-[11px] text-sidebar-foreground/40 leading-relaxed">Belum ada percakapan.<br />Mulai dengan klik tombol di atas.</p>
-                                </div>
-                            )
-                        ) : (
-                            conversations.map((conv) => {
-                                const isActive = activeConversation?.id === conv.id;
-                                const isEditing = editingConvId === conv.id;
-
-                                return (
-                                    <SidebarMenuItem key={conv.id}>
-                                        <SidebarMenuButton
-                                            isActive={isActive}
-                                            onClick={() => handleSelectConversation(conv.id)}
-                                            className={`group relative flex items-center justify-between rounded-xl px-2.5 py-2 text-xs font-medium transition-all ${
-                                                isActive
-                                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-bold shadow-sm border border-[#FFD200]/20'
-                                                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
-                                            }`}
-                                            tooltip={conv.title}
-                                        >
-                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-[#FFD200]' : 'text-sidebar-foreground/40'}`} />
-                                                {!isCollapsed && (
-                                                    isEditing ? (
-                                                        <input
-                                                            type="text"
-                                                            value={editingTitle}
-                                                            onChange={(e) => setEditingTitle(e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') handleSaveTitle(conv.id);
-                                                                if (e.key === 'Escape') setEditingConvId(null);
-                                                            }}
-                                                            onBlur={() => handleSaveTitle(conv.id)}
-                                                            autoFocus
-                                                            className="w-full bg-black/30 text-white rounded px-1.5 py-0.5 text-xs border border-white/30 focus:outline-none"
-                                                        />
-                                                    ) : (
-                                                        <span className="truncate">{conv.title}</span>
-                                                    )
-                                                )}
-                                            </div>
-
-                                            {!isCollapsed && !isEditing && (
-                                                <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setEditingConvId(conv.id);
-                                                            setEditingTitle(conv.title);
-                                                        }}
-                                                        className="rounded p-1 hover:text-[#FFD200] text-sidebar-foreground/50 transition-colors"
-                                                        title="Ubah Nama"
-                                                    >
-                                                        <Edit2 className="h-3 w-3" />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => handleDeleteClick(e, conv)}
-                                                        className="rounded p-1 hover:text-red-400 text-sidebar-foreground/50 transition-colors"
-                                                        title="Hapus Percakapan"
-                                                    >
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                );
-                            })
+            <SidebarContent className="custom-scrollbar px-2 py-2">
+                {conversations.length === 0 ? (
+                    <p className="px-2 py-3 font-mono text-[13px] leading-relaxed text-mist/40">Belum ada percakapan.</p>
+                ) : (
+                    <>
+                        {pinned.length > 0 && (
+                            <>
+                                <p className="px-2.5 pb-1 pt-1 font-mono text-[11px] uppercase tracking-wide text-mist/35">
+                                    Tersemat
+                                </p>
+                                <ul className="mb-2 space-y-0.5">{pinned.map(renderItem)}</ul>
+                            </>
                         )}
-                    </SidebarMenu>
-                </SidebarGroup>
-
-                <SidebarGroup className="p-0 mt-2">
-                    {!isCollapsed && (
-                        <SidebarGroupLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/40">
-                            Integrasi
-                        </SidebarGroupLabel>
-                    )}
-                    <SidebarMenu>
-                        <SidebarMenuItem>
-                            <SidebarMenuButton
-                                onClick={() => router.get('/wira/whatsapp-groups')}
-                                className="flex items-center gap-2 rounded-xl px-2.5 py-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-all"
-                                tooltip="Grup WhatsApp PLN"
-                            >
-                                <Users className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                                {!isCollapsed && <span>Grup WhatsApp PLN</span>}
-                            </SidebarMenuButton>
-                        </SidebarMenuItem>
-                    </SidebarMenu>
-                </SidebarGroup>
+                        {others.length > 0 && (
+                            <>
+                                {pinned.length > 0 && (
+                                    <p className="px-2.5 pb-1 pt-1 font-mono text-[11px] uppercase tracking-wide text-mist/35">
+                                        Terbaru
+                                    </p>
+                                )}
+                                <ul className="space-y-0.5">{others.map(renderItem)}</ul>
+                            </>
+                        )}
+                    </>
+                )}
             </SidebarContent>
 
-            {/* FOOTER */}
-            <SidebarFooter className="p-2 border-t border-sidebar-border">
-                <NavUser />
+            <SidebarFooter className="gap-2 border-t border-white/10 px-4 py-4">
+                {user && (
+                    <div className="flex flex-col gap-0.5">
+                        <span className="truncate text-[14px] text-mist/85">{user.name}</span>
+                        <span className="truncate font-mono text-[12px] text-mist/40">{user.email}</span>
+                    </div>
+                )}
+                <div className="flex items-center gap-2 font-mono text-[13px]">
+                    <button
+                        type="button"
+                        onClick={() => router.get('/settings/profile')}
+                        className="text-mist/60 transition-colors hover:text-mist/90"
+                    >
+                        Pengaturan
+                    </button>
+                    <span className="text-mist/25">·</span>
+                    <button
+                        type="button"
+                        onClick={() => router.post('/logout')}
+                        className="text-mist/60 transition-colors hover:text-mist/90"
+                    >
+                        Keluar
+                    </button>
+                </div>
             </SidebarFooter>
 
-            {/* MODAL: KONFIRMASI HAPUS PERCAKAPAN */}
-            {deleteTargetConv && (
-                <div 
-                    onClick={(e) => e.stopPropagation()}
-                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150"
-                >
-                    <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                        <div className="h-1 w-full bg-gradient-to-r from-red-500 to-rose-500" />
-                        <div className="p-6">
-                            <div className="flex flex-col items-center text-center gap-3 mb-6">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-950/60 border border-red-100 dark:border-red-900">
-                                    <AlertTriangle className="h-7 w-7 text-red-500" />
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-black text-gray-900 dark:text-white mb-1">Hapus Percakapan?</h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                                        Percakapan <span className="font-bold text-gray-800 dark:text-gray-200">"{deleteTargetConv.title}"</span> dan seluruh isi riwayat pesan di dalamnya akan dihapus secara permanen.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setDeleteTargetConv(null)}
-                                    disabled={isDeletingConv}
-                                    className="flex-1 px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors disabled:opacity-50"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    onClick={executeDeleteConv}
-                                    disabled={isDeletingConv}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-md disabled:opacity-70"
-                                >
-                                    {isDeletingConv ? (
-                                        <>
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            Menghapus...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                            Ya, Hapus
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
+            {/* Menu aksi percakapan (⋯) — dropdown ringan tanpa dependency, fixed agar tidak terpotong */}
+            {menu && menuConv && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+                    <div
+                        className="fixed z-50 min-w-44 rounded-[10px] border border-white/10 bg-[#2f2f2f] p-1 shadow-xl"
+                        style={{
+                            left: Math.max(8, menu.x - 176),
+                            top: menu.flip ? undefined : menu.y + 4,
+                            bottom: menu.flip ? window.innerHeight - menu.y + 4 : undefined,
+                        }}
+                    >
+                        <button type="button" className={menuItemClass} onClick={() => runAction(() => togglePin(menu.id))}>
+                            {menuConv.pinned_at ? 'Lepas sematan' : 'Sematkan percakapan'}
+                        </button>
+                        <button type="button" className={menuItemClass} onClick={() => runAction(() => share(menu.id))}>
+                            Bagikan
+                        </button>
+                        <button
+                            type="button"
+                            className={menuItemClass}
+                            onClick={() =>
+                                runAction(() => {
+                                    setEditingId(menuConv.id);
+                                    setEditTitle(menuConv.title);
+                                })
+                            }
+                        >
+                            Ganti nama
+                        </button>
+                        <button type="button" className={menuItemClass} onClick={() => runAction(() => archive(menu.id))}>
+                            Arsipkan
+                        </button>
+                        <div className="my-1 h-px bg-white/10" />
+                        <button
+                            type="button"
+                            className="block w-full rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-ember transition-colors hover:bg-ember/10"
+                            onClick={() => runAction(() => remove(menu.id))}
+                        >
+                            Hapus
+                        </button>
                     </div>
-                </div>
+                </>
             )}
         </Sidebar>
     );

@@ -1,31 +1,15 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
+/**
+ * DIHAPUS pada Fase 1 (panduan.md §9): fitur WhatsApp Broadcast tidak termasuk
+ * ruang lingkup Fase 1. Migrasi ini dikosongkan; file fisik menunggu dihapus manual
+ * (lihat catatan di ringkasan tugas). Tabel lama—bila ada—tidak lagi dibuat ulang.
+ */
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
-    {
-        Schema::create('wira_whatsapp_groups', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('group_id');
-            $table->string('category');
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
-        });
-    }
+    public function up(): void {}
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
-    {
-        Schema::dropIfExists('wira_whatsapp_groups');
-    }
+    public function down(): void {}
 };

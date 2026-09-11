@@ -2,20 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-
-class WiraWhatsappGroup extends Model
-{
-    protected $fillable = [
-        'name',
-        'group_id',
-        'category',
-        'is_active',
-    ];
-
-    public function messageLogs(): HasMany
-    {
-        return $this->hasMany(WiraMessageLog::class);
-    }
-}
+/**
+ * DIHAPUS pada Fase 1 (panduan.md §9): model grup WhatsApp tidak lagi dipakai.
+ * File fisik menunggu dihapus manual (environment memblokir penghapusan file lama).
+ */

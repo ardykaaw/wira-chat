@@ -10,6 +10,13 @@ class WiraConversation extends Model
     protected $fillable = [
         'user_id',
         'title',
+        'pinned_at',
+        'archived_at',
+    ];
+
+    protected $casts = [
+        'pinned_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

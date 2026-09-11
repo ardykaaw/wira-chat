@@ -9,9 +9,21 @@
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'General Sans', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    --font-mono:
+        'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* WIRA design tokens — palet gelap datar ala ChatGPT (mengganti gradasi biru→maron) */
+    --color-void: #212121; /* dasar area chat */
+    --color-deep-current: #171717; /* sidebar, permukaan paling gelap */
+    --color-surface: #2f2f2f; /* permukaan (bubble user, input dock, kartu) */
+    --color-ember: #e2626b; /* danger/error (mis. pesan validasi login) */
+    --color-signal: #3e5ce0; /* aksen interaktif halus (fokus, tautan) */
+    --color-mist: #ececec; /* teks utama, near-white netral */
+    --radius-shell: 4px;
+    --radius-dock: 20px;
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -157,10 +169,103 @@
     background: rgba(255, 255, 255, 0.45);
 }
 
-/* Force sidebar to use our theme colors (overrides Shadcn inline styles) */
+/* WIRA sidebar: permukaan datar paling gelap ala ChatGPT (#171717) */
 [data-sidebar="sidebar"] {
-    background-color: #2F6C8E !important;
-    color: rgba(255, 255, 255, 0.9) !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+    background: #171717 !important;
+    color: rgba(236, 236, 236, 0.9) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ── WIRA visual language — palet gelap datar (design-wira.md §5, §6) ─── */
+
+/* Latar utama: hitam datar (#212121), bukan gradasi */
+.wira-gradient {
+    background: #212121;
+}
+
+/* Permukaan: solid gelap (#2f2f2f) — bubble user, input dock, kartu login */
+.glass {
+    background: #2f2f2f;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Outline bergerak pada input dock — satu-satunya animasi berkelanjutan (§6) */
+@property --wira-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+@keyframes wira-rotate-border {
+    to {
+        --wira-angle: 360deg;
+    }
+}
+.input-dock {
+    position: relative;
+    border-radius: var(--radius-dock);
+}
+.input-dock::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+        from var(--wira-angle),
+        rgba(255, 255, 255, 0.28),
+        rgba(255, 255, 255, 0.03),
+        rgba(255, 255, 255, 0.28)
+    );
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: wira-rotate-border 6s linear infinite;
+    pointer-events: none;
+}
+/* Saat user mengetik: kecepatan meningkat (§6) */
+.input-dock[data-typing='true']::before {
+    animation-duration: 2.8s;
+}
+
+/* Pengganti "typing dots": pita cahaya di tepi kiri kolom jawaban saat streaming (§6) */
+.answer-streaming {
+    position: relative;
+    padding-left: 14px;
+}
+.answer-streaming::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 2px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.15));
+    animation: wira-stream-pulse 1.6s ease-in-out infinite;
+}
+@keyframes wira-stream-pulse {
+    0%,
+    100% {
+        opacity: 0.35;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Hormati prefers-reduced-motion penuh (§6, §11) */
+@media (prefers-reduced-motion: reduce) {
+    .input-dock::before {
+        animation: none;
+        background: rgba(255, 255, 255, 0.15);
+    }
+    .answer-streaming::before {
+        animation: none;
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.4);
+    }
 }
 

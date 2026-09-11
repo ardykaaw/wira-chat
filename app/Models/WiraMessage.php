@@ -11,9 +11,16 @@ class WiraMessage extends Model
         'conversation_id',
         'role',
         'content',
-        'attachment_url',
-        'attachment_name',
-        'attachment_type',
+        'citations',
+        'confidence_note',
+        'blocked',
+        'blocked_reason',
+        'correlation_id',
+    ];
+
+    protected $casts = [
+        'citations' => 'array',
+        'blocked' => 'boolean',
     ];
 
     public function conversation(): BelongsTo

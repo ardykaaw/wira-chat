@@ -2,25 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-
-class WiraMessageLog extends Model
-{
-    protected $fillable = [
-        'user_id',
-        'group_id',
-        'message',
-        'status',
-    ];
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function group(): BelongsTo
-    {
-        return $this->belongsTo(WiraWhatsappGroup::class);
-    }
-}
+/**
+ * DIHAPUS pada Fase 1 (panduan.md §9): model log broadcast WhatsApp tidak lagi dipakai.
+ * File fisik menunggu dihapus manual (environment memblokir penghapusan file lama).
+ */
